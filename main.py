@@ -3,7 +3,7 @@ import json
 import random
 import time
 import asyncio
-import shutil # 引入备份库
+import shutil 
 from datetime import datetime
 from astrbot.api.all import *
 from astrbot.api.event import filter
@@ -17,6 +17,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, 'config.json')
 USER_VOCAB_PATH = os.path.join(BASE_DIR, 'user_vocab.json') 
 SUBSCRIBER_PATH = os.path.join(BASE_DIR, 'subscribers.json') 
+# 🌟 新增：永久荣誉墙存储路径
+MASTERED_VOCAB_PATH = os.path.join(BASE_DIR, 'mastered_vocab.json') 
 
 DEFAULT_CONFIG = {
     "command_draw_reading": "来篇阅读",
@@ -26,7 +28,9 @@ DEFAULT_CONFIG = {
     "command_search_vocab": "查单词",
     "command_add_vocab": "加生词",
     "command_review_vocab": "今日复习",
-    "command_forget_vocab": "忘",       # 🌟 新增：动态降级指令
+    "command_forget_vocab": "忘",       
+    "command_get_new": "今日新词",
+    "command_my_stats": "我的词库",    # 🌟 新增：查看战绩指令
     "command_set_alarm": "复习提醒"
 }
 
@@ -41,18 +45,17 @@ else:
             cfg = json.load(f)
             if "command_forget_vocab" not in cfg: cfg["command_forget_vocab"] = "忘"
             if "command_check_answer" not in cfg: cfg["command_check_answer"] = "查答案"
+            if "command_get_new" not in cfg: cfg["command_get_new"] = "今日新词"
+            if "command_my_stats" not in cfg: cfg["command_my_stats"] = "我的词库"
     except Exception: cfg = DEFAULT_CONFIG
 
-# 🌟 融合：艾宾浩斯复习间隔表 (单位:秒) -> 12小时, 1天, 2天, 4天, 7天, 15天
 EBBINGHAUS_INTERVALS = [43200, 86400, 172800, 345600, 604800, 1296000]
-
-# 🌟 融合：多维状态称号表
 RANKS = ['待定 🥚', '模糊 📉', '清晰 📈', '记住 🧠', '牢固 🛡️', '掌握 🌟', '精通 👑']
 
 # ==========================================
 # 🤖 插件核心逻辑
 # ==========================================
-@register("cet6_tutor", "YourName", "四六级金牌私教", "4.0.0")
+@register("cet6_tutor", "YourName", "四六级金牌私教", "4.2.0")
 class CET6Tutor(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -63,14 +66,11 @@ class CET6Tutor(Star):
         self.vocab_fast_dict = {}     
         self.user_vocab_db = {} 
         self.subscribers = {} 
+        self.mastered_vocab_db = {} # 🌟 新增：已掌握词汇数据库
         
         self.load_data()
         asyncio.create_task(self.daily_push_task())
 
-    # ==========================================
-    # ⏱️ 后台定时巡逻与工具库
-    # ==========================================
-    # 🌟 融合：将冰冷的时间戳转化为人类语言 (Fix Time 逻辑)
     def get_human_time(self, timestamp):
         target = datetime.fromtimestamp(timestamp)
         now = datetime.now()
@@ -102,9 +102,6 @@ class CET6Tutor(Star):
                 logger.error(f"[CET6 Tutor] 定时推送报错: {e}")
             await asyncio.sleep(60) 
 
-    # ==========================================
-    # 💾 数据加载与防崩溃保存
-    # ==========================================
     def load_data(self):
         q_path = os.path.join(BASE_DIR, 'CET6_Perfect_Verified.json')
         a_path = os.path.join(BASE_DIR, 'CET6_Answer.json')
@@ -142,14 +139,24 @@ class CET6Tutor(Star):
                 with open(SUBSCRIBER_PATH, 'r', encoding='utf-8') as f: self.subscribers = json.load(f)
             except Exception: pass
 
-    # 🌟 融合：强力备份写入 (防止写 JSON 途中断电导致数据清空)
+        # 🌟 新增：加载荣誉墙数据
+        if os.path.exists(MASTERED_VOCAB_PATH):
+            try:
+                with open(MASTERED_VOCAB_PATH, 'r', encoding='utf-8') as f: self.mastered_vocab_db = json.load(f)
+            except Exception: pass
+
     def save_user_vocab(self):
         try:
-            if os.path.exists(USER_VOCAB_PATH):
-                shutil.copyfile(USER_VOCAB_PATH, USER_VOCAB_PATH + ".bak")
-            with open(USER_VOCAB_PATH, 'w', encoding='utf-8') as f: 
-                json.dump(self.user_vocab_db, f, ensure_ascii=False, indent=4)
+            if os.path.exists(USER_VOCAB_PATH): shutil.copyfile(USER_VOCAB_PATH, USER_VOCAB_PATH + ".bak")
+            with open(USER_VOCAB_PATH, 'w', encoding='utf-8') as f: json.dump(self.user_vocab_db, f, ensure_ascii=False, indent=4)
         except Exception as e: logger.error(f"[CET6 Tutor] 保存生词本失败：{e}")
+
+    # 🌟 新增：保存荣誉墙数据
+    def save_mastered_vocab(self):
+        try:
+            if os.path.exists(MASTERED_VOCAB_PATH): shutil.copyfile(MASTERED_VOCAB_PATH, MASTERED_VOCAB_PATH + ".bak")
+            with open(MASTERED_VOCAB_PATH, 'w', encoding='utf-8') as f: json.dump(self.mastered_vocab_db, f, ensure_ascii=False, indent=4)
+        except Exception as e: logger.error(f"[CET6 Tutor] 保存荣誉墙失败：{e}")
 
     def save_subscribers(self):
         try:
@@ -266,8 +273,71 @@ class CET6Tutor(Star):
             yield event.plain_result(f"🙈 没找到 '{target_word}' 的记录哦。")
 
     # ==========================================
-    # 🧠 生词本核心引擎 (升级版)
+    # 🧠 生词本核心引擎 (新词批发 + 复习 + 惩罚)
     # ==========================================
+    # 🌟 新增：查看个人词库战绩
+    @filter.command(cfg.get("command_my_stats", "我的词库"))
+    async def my_stats(self, event: AstrMessageEvent):
+        user_id = str(event.get_sender_id())
+        active_count = len(self.user_vocab_db.get(user_id, {}))
+        mastered_count = len(self.mastered_vocab_db.get(user_id, {}))
+        
+        reply = f"📊 【 个人词库战绩 】\n"
+        reply += "=" * 20 + "\n"
+        reply += f"🔥 正在渡劫的单词：{active_count} 个\n"
+        reply += f"🎓 永久掌握的单词：{mastered_count} 个\n"
+        reply += "=" * 20 + "\n"
+        
+        if mastered_count == 0 and active_count == 0:
+            reply += "你的词库还是空的，快去背词吧！"
+        elif mastered_count > 0:
+            reply += "太强了！继续保持！考前可以找我导出已掌握词汇哦！"
+        else:
+            reply += "万里长征第一步，加油呀！"
+            
+        yield event.plain_result(reply)
+
+    @filter.command(cfg.get("command_get_new", "今日新词"))
+    async def get_new_words(self, event: AstrMessageEvent, count: int = 35):
+        user_id = str(event.get_sender_id())
+        if not self.vocab_random_list or not self.vocab_fast_dict:
+            yield event.plain_result("⚠️ 词库未加载成功，无法获取新词。")
+            return
+
+        if user_id not in self.user_vocab_db: self.user_vocab_db[user_id] = {}
+        if user_id not in self.mastered_vocab_db: self.mastered_vocab_db[user_id] = {} # 确保有荣誉墙
+        
+        # 智能遍历：跳过正在复习的，也要跳过已经永久掌握的！
+        unlearned_words = []
+        for word in self.vocab_random_list:
+            w_lower = word.strip().lower()
+            if w_lower not in self.user_vocab_db[user_id] and w_lower not in self.mastered_vocab_db[user_id]:
+                unlearned_words.append(w_lower)
+            if len(unlearned_words) >= count:
+                break
+
+        if not unlearned_words:
+            yield event.plain_result("🎉 太神了！大词库里的几千个单词已经被你全部过完啦！")
+            return
+
+        now = time.time()
+        reply = f"🆕 【 每日新词积攒 】 目标: {len(unlearned_words)} 词\n" + "=" * 25 + "\n"
+        
+        for idx, word in enumerate(unlearned_words):
+            self.user_vocab_db[user_id][word] = {
+                "add_time": now, 
+                "stage": 0, 
+                "next_review": now + EBBINGHAUS_INTERVALS[0]
+            }
+            meaning = self.vocab_fast_dict.get(word, "释义丢失")
+            if len(meaning) > 40: meaning = meaning[:40] + "..."
+            reply += f"{idx+1}. {word}  {meaning}\n"
+
+        self.save_user_vocab()
+        alarm_cmd = cfg.get("command_set_alarm", "复习提醒")
+        reply += "=" * 25 + f"\n✨ 这 {len(unlearned_words)} 个新词已正式编入你的艾宾浩斯战区！\n(它们将会在你的 `/{alarm_cmd}` 设定时间自动弹出来逼你复习哦！)"
+        yield event.plain_result(reply)
+
     @filter.command(cfg.get("command_add_vocab", "加生词"))
     async def add_vocab(self, event: AstrMessageEvent, target_word: str = ""):
         add_cmd = cfg.get("command_add_vocab", "加生词")
@@ -283,12 +353,18 @@ class CET6Tutor(Star):
             return
 
         if user_id not in self.user_vocab_db: self.user_vocab_db[user_id] = {}
+        if user_id not in self.mastered_vocab_db: self.mastered_vocab_db[user_id] = {}
+        
         if target_word in self.user_vocab_db[user_id]:
             yield event.plain_result(f"✅ '{target_word}' 已经在你的生词本里啦！")
             return
+            
+        if target_word in self.mastered_vocab_db[user_id]:
+            yield event.plain_result(f"🎓 '{target_word}' 已经是你永久掌握的词汇了！难道又忘了？我已帮你重新拉回复习列表！")
+            del self.mastered_vocab_db[user_id][target_word] # 从荣誉墙除名，重新复习
+            self.save_mastered_vocab()
 
         now = time.time()
-        # 初始阶段为 0 (待定)
         self.user_vocab_db[user_id][target_word] = {
             "add_time": now, "stage": 0, "next_review": now + EBBINGHAUS_INTERVALS[0]
         }
@@ -314,7 +390,6 @@ class CET6Tutor(Star):
             meaning = self.vocab_fast_dict.get(word, "释义丢失")
             if len(meaning) > 100: meaning = meaning[:100] + "..."
             
-            # 🌟 融合：自动推入下一周期 (Slide Right 升级)
             current_stage = self.user_vocab_db[user_id][word]["stage"]
             if current_stage + 1 < len(EBBINGHAUS_INTERVALS):
                 new_stage = current_stage + 1
@@ -332,8 +407,17 @@ class CET6Tutor(Star):
         forget_cmd = cfg.get("command_forget_vocab", "忘")
         reply += "=" * 25 + f"\n✨ 以上单词已自动升级！\n⚠️ 没记住？回复 `/{forget_cmd} [单词]` 降级重排！"
 
+        # 🌟 修改：毕业单词不再直接删除，而是移入永久荣誉墙！
         if graduated_words:
-            for gw in graduated_words: del self.user_vocab_db[user_id][gw]
+            if user_id not in self.mastered_vocab_db: self.mastered_vocab_db[user_id] = {}
+            for gw in graduated_words: 
+                # 记录毕业时间和当时的释义
+                self.mastered_vocab_db[user_id][gw] = {
+                    "graduated_time": now,
+                    "meaning": self.vocab_fast_dict.get(gw, "释义丢失")
+                }
+                del self.user_vocab_db[user_id][gw] # 从活跃记忆库中移除
+            self.save_mastered_vocab() # 保存荣誉墙
 
         self.save_user_vocab()
         return reply
@@ -345,7 +429,6 @@ class CET6Tutor(Star):
         if reply: yield event.plain_result(reply)
         else: yield event.plain_result("🎉 太棒了！今天你没有需要复习的生词！")
 
-    # 🌟 融合：遗忘惩罚引擎 (Slide Left 降级)
     @filter.command(cfg.get("command_forget_vocab", "忘"))
     async def forget_vocab(self, event: AstrMessageEvent, target_word: str = ""):
         forget_cmd = cfg.get("command_forget_vocab", "忘")
@@ -360,7 +443,6 @@ class CET6Tutor(Star):
             yield event.plain_result(f"🤔 你的生词本里目前没有 '{target_word}' 正在复习哦。")
             return
 
-        # 惩罚：直接扣减 2 个阶段，最低退回 0 (待定)
         current_stage = self.user_vocab_db[user_id][target_word]["stage"]
         new_stage = max(0, current_stage - 2) 
         now = time.time()
