@@ -23,6 +23,8 @@ AstrBot 插件模板 / A template plugin for AstrBot plugin feature
 * **`/抽单词`**：从核心词库中随机抽出 5 个乱序单词进行闪测。
 * **`/查单词 [英文]`**：一键查询单词的详细释义和例句。
 
+<img width="1800" height="920" alt="image" src="https://github.com/user-attachments/assets/248f66e2-15db-494a-adc1-87e07fdb8bb3" />
+
 ## 📦 安装说明
 1. 在 AstrBot 管理面板的“插件市场”搜索 `astrbot_plugin_cet6` 一键安装。
 2. 或直接下载本仓库 ZIP 包，上传至 AstrBot 后台。
