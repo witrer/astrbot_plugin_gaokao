@@ -2,7 +2,7 @@
 
 ![Version](https://img.shields.io/badge/Version-5.2.0-blue.svg) ![Framework](https://img.shields.io/badge/Framework-AstrBot-green.svg)
 
-这不仅是一个英语学习插件，而是一个**武装到牙齿的“四六级智能备考 Agent”**。
+这不仅是一个英语学习插件，而是一个**武装到牙齿的“六级智能备考 Agent”**。
 内置企业级「艾宾浩斯记忆引擎」、全真题库防重追踪、智能定时推送以及 Web 可视化配置。帮你把碎片时间转化为通关六级的终极武器！
 
 ---
