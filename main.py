@@ -501,8 +501,16 @@ class CET6Tutor(Star):
         self.user_vocab_db[user_id][target_word] = {"add_time": now, "stage": 0, "next_review": now + EBBINGHAUS_INTERVALS[0]}
         self.save_user_vocab()
         
+        # 🌟 核心体验升级：直接提取释义并优雅排版输出
+        meaning = self.vocab_fast_dict.get(target_word, "释义丢失")
         human_time = self.get_human_time(now + EBBINGHAUS_INTERVALS[0])
-        yield event.plain_result(f"📚 成功将 '{target_word}' 收入生词本！\n[当前境界: {RANKS[0]}]\n下次复习时间：{human_time}。")
+        
+        reply = f"📚 成功将 '{target_word}' 收入生词本！\n"
+        reply += f"💡 释义：{meaning}\n"
+        reply += f"[当前境界: {RANKS[0]}]\n"
+        reply += f"下次复习时间：{human_time}。"
+        
+        yield event.plain_result(reply)
 
     # 🌟 新增：手动录入释义接口，接收用户喂养的数据
     @filter.command(cfg.get("command_add_meaning", "释义"))
@@ -787,3 +795,4 @@ class CET6Tutor(Star):
         }
         self.save_subscribers()
         yield event.plain_result(f"✅ 设置成功！我以后会在每天的 {time_str} 主动把复习词汇发给你，加油！")
+
