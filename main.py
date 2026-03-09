@@ -412,32 +412,65 @@ class CET6Tutor(Star):
         if user_id not in self.user_vocab_db: self.user_vocab_db[user_id] = {}
         if user_id not in self.mastered_vocab_db: self.mastered_vocab_db[user_id] = {} 
         
+        # 🌟 核心防溢出逻辑：检查今天已经领了多少个词
+        today_date = datetime.now().date()
+        today_added_words = []
+        for word, data in self.user_vocab_db[user_id].items():
+            if datetime.fromtimestamp(data.get("add_time", 0)).date() == today_date:
+                today_added_words.append(word)
+
+        current_count = len(today_added_words)
+
+        # 场景1：今天领取的词已经达标，纯展示，防手滑
+        if count <= current_count:
+            get_new_cmd = cfg.get("command_get_new", "今日新词")
+            reply = f"✅ 【 今日配额已满 】 (已领取: {current_count} 词)\n" + "=" * 25 + "\n"
+            for idx, word in enumerate(today_added_words):
+                meaning = self.vocab_fast_dict.get(word, "释义丢失")
+                if len(meaning) > 40: meaning = meaning[:40] + "..."
+                reply += f"{idx+1}. {word}  {meaning}\n"
+            
+            reply += "=" * 25 + f"\n💡 你今天已经领过新词啦！\n如果觉得学有余力，可以发送 `/{get_new_cmd} {current_count + 10}` 来增加配额！"
+            yield event.plain_result(reply)
+            return
+
+        # 场景2：需要补充新词（包含第一次领，或者要求追加额度）
+        need_count = count - current_count
         unlearned_words = []
         for word in self.vocab_random_list:
             w_lower = word.strip().lower()
             if w_lower not in self.user_vocab_db[user_id] and w_lower not in self.mastered_vocab_db[user_id]:
                 unlearned_words.append(w_lower)
-            if len(unlearned_words) >= count:
+            if len(unlearned_words) >= need_count:
                 break
 
-        if not unlearned_words:
+        if not unlearned_words and current_count == 0:
             yield event.plain_result("🎉 太神了！大词库里的几千个单词已经被你全部过完啦！")
             return
 
         now = time.time()
-        reply = f"🆕 【 每日新词积攒 】 目标: {len(unlearned_words)} 词\n" + "=" * 25 + "\n"
-        
-        for idx, word in enumerate(unlearned_words):
+        newly_added = []
+        for word in unlearned_words:
             self.user_vocab_db[user_id][word] = {
                 "add_time": now, "stage": 0, "next_review": now + EBBINGHAUS_INTERVALS[0]
             }
-            meaning = self.vocab_fast_dict.get(word, "释义丢失")
-            if len(meaning) > 40: meaning = meaning[:40] + "..."
-            reply += f"{idx+1}. {word}  {meaning}\n"
+            newly_added.append(word)
+            today_added_words.append(word)
 
         self.save_user_vocab()
+        
+        reply = f"🆕 【 每日新词积攒 】 目标: {count} 词\n" + "=" * 25 + "\n"
+        for idx, word in enumerate(today_added_words):
+            meaning = self.vocab_fast_dict.get(word, "释义丢失")
+            if len(meaning) > 40: meaning = meaning[:40] + "..."
+            # 给刚追加的新词打上一个火热的标签
+            if word in newly_added:
+                reply += f"{idx+1}. {word}  {meaning} [新🔥]\n"
+            else:
+                reply += f"{idx+1}. {word}  {meaning}\n"
+
         alarm_cmd = cfg.get("command_set_alarm", "复习提醒")
-        reply += "=" * 25 + f"\n✨ 这 {len(unlearned_words)} 个新词已正式编入你的艾宾浩斯战区！\n(发送 `/{alarm_cmd}` 设定系统自动催命时间)"
+        reply += "=" * 25 + f"\n✨ 这 {len(today_added_words)} 个词已正式编入战区！\n(发送 `/{alarm_cmd}` 设定系统自动催命时间)"
         yield event.plain_result(reply)
 
     @filter.command(cfg.get("command_add_vocab", "加生词"))
