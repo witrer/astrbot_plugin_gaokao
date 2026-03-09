@@ -299,8 +299,10 @@ class CET6Tutor(Star):
             return
         session = self.user_sessions[user_id]
         reply = f"🤫 【 答案揭晓 】\n题目：{session['meta'].get('year')}年 {session['meta'].get('month')}月 第{session['meta'].get('set_index')}套 | {session['sec_type']}\n正确答案是：{session['correct_ans']}\n"
-        reply += "=" * 20 + f"\n(本题已标记为“已刷”，想挑战新题请发送 '/{draw_cmd}')"
-        self.mark_question_done(user_id, session["q_id"])
+        
+        # 🌟 逻辑修改：纯看答案不再标记为“已刷”，保留在题库中
+        reply += "=" * 20 + f"\n(⚠️ 由于你是直接查答案，本题【未】标记为已刷，以后还会遇到哦！想挑战新题请发 '/{draw_cmd}')"
+        
         del self.user_sessions[user_id]
         yield event.plain_result(reply)
 
@@ -336,9 +338,14 @@ class CET6Tutor(Star):
             else: results.append(f"第 {q_num} 题: ❌ (你的:{u} -> 正确:{c})")
             
         reply = f"📊 【 批改报告 】 得分: {score} / {len(correct_ans)}\n" + "-" * 20 + "\n" + "\n".join(results)
-        reply += f"\n" + "-" * 20 + f"\n(本题已标记为“已刷”，想挑战新题请发送 '/{draw_cmd}')"
         
-        self.mark_question_done(user_id, session["q_id"])
+        # 🌟 逻辑修改：只有满分才能被斩入“已刷”记录！
+        if score == len(correct_ans):
+            reply += f"\n" + "-" * 20 + f"\n🎉 满分通关！本题已光荣打上“已刷”烙印！想挑战新题请发 '/{draw_cmd}'"
+            self.mark_question_done(user_id, session["q_id"])
+        else:
+            reply += f"\n" + "-" * 20 + f"\n💪 革命尚未成功！未获满分，本题【未】标记为已刷，它还会回来找你的！想挑战新题请发 '/{draw_cmd}'"
+            
         del self.user_sessions[user_id]
         yield event.plain_result(reply)
 
@@ -606,3 +613,4 @@ class CET6Tutor(Star):
         }
         self.save_subscribers()
         yield event.plain_result(f"✅ 设置成功！我以后会在每天的 {time_str} 主动把复习词汇发给你，加油！")
+
