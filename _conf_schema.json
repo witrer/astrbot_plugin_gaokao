@@ -3,7 +3,7 @@
     "description": "📜 抽取阅读真题",
     "type": "string",
     "default": "来篇阅读",
-    "hint": "触发抽取一篇未刷过的六级阅读真题"
+    "hint": "触发抽取一篇未刷过的四六级阅读真题"
   },
   "command_submit_answer": {
     "description": "📝 提交做题答案",
@@ -40,6 +40,12 @@
     "type": "string",
     "default": "加生词",
     "hint": "在阅读中遇到生词手动加入，例如：/加生词 insight"
+  },
+  "command_add_meaning": {
+    "description": "✍️ 补充生僻词释义",
+    "type": "string",
+    "default": "释义",
+    "hint": "当大词库未包含时，手动补充并加入定制词库，例如：/释义 停止"
   },
   "command_review_vocab": {
     "description": "⏰ 艾宾浩斯复习",
