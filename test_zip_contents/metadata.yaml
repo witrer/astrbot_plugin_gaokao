@@ -1,0 +1,6 @@
+name: "astrbot_plugin_gaokao"
+display_name: "高考金牌私教"
+desc: "基于GAOKAO-Bench真题的高考智能助手，支持全科刷题、LLM AI解析、部分题目图片渲染、维度评分。"
+author: "202704948-design"
+repo: "https://github.com/202704948-design/astrbot_plugin_gaokao"
+version: "1.0.0"

@@ -1,88 +1,38 @@
 {
-  "command_draw_reading": {
-    "description": "📜 抽取阅读真题",
+  "llm_provider": {
+    "description": "🤖 AI 批改/解析使用的模型",
     "type": "string",
-    "default": "来篇阅读",
-    "hint": "触发抽取一篇未刷过的四六级阅读真题"
+    "hint": "选择用于主观题批改、AI解析、诊断等功能的大模型提供商与模型",
+    "_special": "select_provider"
   },
-  "command_submit_answer": {
-    "description": "📝 提交做题答案",
-    "type": "string",
-    "default": "答案",
-    "hint": "做完阅读后提交选项，满分才算通过。触发格式：/答案 ABCD"
+  "render_as_image": {
+    "description": "🖼️ 是否渲染为图片",
+    "type": "bool",
+    "default": true,
+    "hint": "如果开启，题目和解析由于带数学公式，将自动转为图片发送"
   },
-  "command_check_answer": {
-    "description": "👀 直接查看答案",
+  "gaokao_date": {
+    "description": "📅 高考日期",
     "type": "string",
-    "default": "查答案",
-    "hint": "放弃做题直接看答案（不会标记为已刷）"
+    "default": "2026-06-07",
+    "hint": "用于计算高考倒计时"
   },
-  "command_search_vocab": {
-    "description": "📖 查询单词释义",
-    "type": "string",
-    "default": "查单词",
-    "hint": "查询详细释义，触发格式：/查单词 abandon"
+  "quiz_timeout": {
+    "description": "⏱️ 答题超时时间(秒)",
+    "type": "int",
+    "default": 300,
+    "hint": "使用交互模式时，等待用户回答的超时时间"
   },
-  "command_random_vocab": {
-    "description": "🎲 随机单词闪测",
-    "type": "string",
-    "default": "抽单词",
-    "hint": "随机抽取5个单词测试记忆"
+  "rush_mode_count": {
+    "description": "🎮 闯关模式最大题数",
+    "type": "int",
+    "default": 20,
+    "hint": "闯关模式最多连续出多少题"
   },
-  "command_get_new": {
-    "description": "🆕 批量拉取新词",
-    "type": "string",
-    "default": "今日新词",
-    "hint": "每天获取新单词进入记忆库，可加数字指定数量，例如：/今日新词 35"
-  },
-  "command_add_vocab": {
-    "description": "➕ 手动添加生词",
-    "type": "string",
-    "default": "加生词",
-    "hint": "在阅读中遇到生词手动加入，例如：/加生词 insight"
-  },
-  "command_add_meaning": {
-    "description": "✍️ 补充生僻词释义",
-    "type": "string",
-    "default": "释义",
-    "hint": "当大词库未包含时，手动补充并加入定制词库，例如：/释义 停止"
-  },
-  "command_review_vocab": {
-    "description": "⏰ 艾宾浩斯复习",
-    "type": "string",
-    "default": "今日复习",
-    "hint": "获取今天到期需要复习的单词表"
-  },
-  "command_forget_vocab": {
-    "description": "📉 遗忘惩罚降级",
-    "type": "string",
-    "default": "忘",
-    "hint": "没记住的单词打回原形，例如：/忘 abandon",
-    "obvious_hint": true
-  },
-  "command_kill_vocab": {
-    "description": "⚔️ 一击必杀(斩词)",
-    "type": "string",
-    "default": "斩",
-    "hint": "遇到太简单的词直接跳过复习，斩入永久掌握！例如：/斩 apple",
-    "obvious_hint": true
-  },
-  "command_my_stats": {
-    "description": "📊 查看个人战绩",
-    "type": "string",
-    "default": "我的词库",
-    "hint": "查看正在复习、永久掌握的单词数量以及刷题进度"
-  },
-  "command_set_alarm": {
-    "description": "🔔 定时复习提醒",
-    "type": "string",
-    "default": "复习提醒",
-    "hint": "设置系统主动推送的时间，例如：/复习提醒 08:30"
-  },
-  "command_help": {
-    "description": "🆘 查看使用文档",
-    "type": "string",
-    "default": "使用文档",
-    "hint": "在聊天框输出插件的动态使用说明书及大考倒计时"
+  "wrong_book_page_size": {
+    "description": "📒 错题本每页显示数",
+    "type": "int",
+    "default": 5,
+    "hint": "错题本翻页时每页显示多少道题"
   }
 }

@@ -1,0 +1,68 @@
+{
+  "command_help": {
+    "description": "🆘 查看使用文档",
+    "type": "string",
+    "default": "高考帮助",
+    "hint": "在聊天框输出插件的动态使用说明书及大考倒计时"
+  },
+  "command_select_subject": {
+    "description": "📘 切换刷题科目",
+    "type": "string",
+    "default": "选科",
+    "hint": "例如：/选科 数学"
+  },
+  "command_quiz": {
+    "description": "📝 随机抽取真题",
+    "type": "string",
+    "default": "刷题",
+    "hint": "触发抽取当前科目未刷过的一道高考真题"
+  },
+  "command_submit": {
+    "description": "✅ 提交答案",
+    "type": "string",
+    "default": "答",
+    "hint": "例如：/答 A 或 /答 设函数为... (用于主观题)"
+  },
+  "command_explain": {
+    "description": "🧠 AI深度解析",
+    "type": "string",
+    "default": "解析",
+    "hint": "调用LLM名师解析刚刚做过的题目"
+  },
+  "command_knowledge": {
+    "description": "📚 知识点梳理",
+    "type": "string",
+    "default": "知识点",
+    "hint": "讲解某个知识点，例如：/知识点 椭圆标准方程"
+  },
+  "command_wrong_book": {
+    "description": "📒 错题本统计",
+    "type": "string",
+    "default": "错题本",
+    "hint": "查看各科目错题数量与复习状态"
+  },
+  "command_daily_review": {
+    "description": "⏰ 错题打卡重做",
+    "type": "string",
+    "default": "每日打卡",
+    "hint": "通过艾宾浩斯记忆曲线提取今天到期的错题"
+  },
+  "command_scores": {
+    "description": "📊 个人维度成绩",
+    "type": "string",
+    "default": "我的成绩",
+    "hint": "查看个人多维度的高考答题成绩和预测得分率"
+  },
+  "render_as_image": {
+    "description": "🖼️ 是否渲染为图片",
+    "type": "bool",
+    "default": true,
+    "hint": "如果开启，题目和解析由于带数学公式，将自动转为图片发送"
+  },
+  "gaokao_date": {
+    "description": "📅 高考日期",
+    "type": "string",
+    "default": "2026-06-07",
+    "hint": "用于计算高考倒计时"
+  }
+}
