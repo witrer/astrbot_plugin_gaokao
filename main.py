@@ -378,7 +378,7 @@ class GaokaoTutor(Star):
             {{ body }}
           </div>
         </div>"""
-        render_options = {"viewport": {"width": 480, "height": 800}, "scale": 2}
+        render_options = {"viewport": {"width": 480, "height": 800}}
         try:
             url = await self.html_render(tmpl, {"q_type": q_type, "year": year, "cat": cat, "score": score, "body": body}, options=render_options)
             return url
