@@ -3,6 +3,7 @@ import json
 import random
 import re
 import string
+import importlib
 import html as html_mod
 import time
 import asyncio
@@ -68,6 +69,7 @@ class GaokaoTutor(Star):
         self.cfg_quiz_timeout = self.config.get("quiz_timeout", 300)
         self.cfg_rush_count = self.config.get("rush_mode_count", 20)
         self.cfg_page_size = self.config.get("wrong_book_page_size", 5)
+        self.cfg_vision_llm_provider = self.config.get("vision_llm_provider", "")
         self.cfg_llm_provider = self.config.get("llm_provider", "")
         self.cfg_continuous_quiz = self.config.get("continuous_quiz_mode", True)
         self.cfg_leaderboard_size = self.config.get("leaderboard_page_size", 10)
@@ -219,15 +221,181 @@ class GaokaoTutor(Star):
 
     # ─── LLM 调用 ─────────────────────────────────────────────
 
-    async def _get_provider_id(self, event: AstrMessageEvent):
-        """获取 LLM provider id：优先使用配置中选择的，否则用当前会话的"""
+    async def _get_provider_id(self, event: AstrMessageEvent, use_vision: bool = False):
+        """获取 LLM provider id：支持文本模型与多模态模型分流。"""
+        if use_vision and self.cfg_vision_llm_provider:
+            return self.cfg_vision_llm_provider
         if self.cfg_llm_provider:
             return self.cfg_llm_provider
         return await self.context.get_current_chat_provider_id(umo=event.unified_msg_origin)
 
-    async def _llm_call(self, event, prompt):
-        provider_id = await self._get_provider_id(event)
-        resp = await self.context.llm_generate(chat_provider_id=provider_id, prompt=prompt)
+    @staticmethod
+    def _clean_image_refs(image_refs):
+        """清洗图片引用，避免过长/无效内容进入提示词。"""
+        cleaned = []
+        seen = set()
+        for ref in image_refs or []:
+            if not ref:
+                continue
+            s = str(ref).strip()
+            if not s:
+                continue
+            # base64 往往很长且多数模型侧无法直接处理，避免污染上下文
+            if s.startswith("data:image"):
+                continue
+            if len(s) > 1024:
+                s = s[:1024] + "..."
+            if s in seen:
+                continue
+            seen.add(s)
+            cleaned.append(s)
+        return cleaned
+
+    @staticmethod
+    def _extract_image_refs_from_event(event):
+        """尽可能从 AstrMessageEvent 中提取图片 URL/路径。"""
+        refs = []
+        seen = set()
+
+        def add_ref(v):
+            if v is None:
+                return
+            if isinstance(v, (list, tuple, set)):
+                for x in v:
+                    add_ref(x)
+                return
+            if isinstance(v, dict):
+                for k in ("url", "file", "path", "src", "image", "image_url", "file_path", "filepath"):
+                    if k in v:
+                        add_ref(v.get(k))
+                return
+            s = str(v).strip()
+            if not s or s in seen:
+                return
+            seen.add(s)
+            refs.append(s)
+
+        def is_image_component(comp):
+            try:
+                c_name = comp.__class__.__name__.lower()
+            except Exception:
+                c_name = ""
+            c_type = ""
+            if isinstance(comp, dict):
+                c_type = str(comp.get("type", "")).lower()
+            else:
+                c_type = str(getattr(comp, "type", "")).lower()
+            return ("image" in c_name) or ("image" in c_type)
+
+        def scan_component(comp):
+            if not is_image_component(comp):
+                return
+            if isinstance(comp, dict):
+                add_ref(comp.get("data", {}))
+                add_ref(comp)
+                return
+            for k in ("url", "file", "path", "src", "image", "image_url", "file_path", "filepath"):
+                add_ref(getattr(comp, k, None))
+            # 兼容 dataclass / pydantic
+            try:
+                if hasattr(comp, "model_dump"):
+                    add_ref(comp.model_dump())
+                elif hasattr(comp, "dict"):
+                    add_ref(comp.dict())
+            except Exception:
+                pass
+
+        # 1) 标准消息链
+        msg_chain = getattr(event, "message", None)
+        if not msg_chain:
+            msg_obj = getattr(event, "message_obj", None)
+            msg_chain = getattr(msg_obj, "message", None)
+        if msg_chain:
+            for comp in msg_chain:
+                scan_component(comp)
+
+        # 2) raw_message 兜底（如 OneBot segment）
+        try:
+            raw = getattr(getattr(event, "message_obj", None), "raw_message", None)
+            if isinstance(raw, dict):
+                segs = raw.get("message") or raw.get("messages") or []
+                if isinstance(segs, list):
+                    for seg in segs:
+                        scan_component(seg)
+        except Exception:
+            pass
+
+        return refs
+
+    @staticmethod
+    def _build_image_part(message_mod, ref):
+        """动态构造多模态图片 Part（兼容 AstrBot 不同版本命名）。"""
+        cls_names = ["ImagePart", "ImageURLPart", "ImageUrlPart", "InputImagePart"]
+        ctor_kwargs = [
+            {"url": ref},
+            {"image_url": ref},
+            {"path": ref},
+            {"file": ref},
+            {"src": ref},
+        ]
+        ctor_methods = ["fromURL", "from_url", "fromFileSystem", "from_file_system", "fromPath", "from_path"]
+
+        for cls_name in cls_names:
+            cls = getattr(message_mod, cls_name, None)
+            if not cls:
+                continue
+            for m in ctor_methods:
+                fn = getattr(cls, m, None)
+                if callable(fn):
+                    try:
+                        return fn(ref)
+                    except Exception:
+                        pass
+            for kw in ctor_kwargs:
+                try:
+                    return cls(**kw)
+                except Exception:
+                    pass
+            try:
+                return cls(ref)
+            except Exception:
+                pass
+        return None
+
+    async def _llm_call(self, event, prompt, image_refs=None):
+        cleaned_refs = self._clean_image_refs(image_refs)
+        use_vision = bool(cleaned_refs)
+        provider_id = await self._get_provider_id(event, use_vision=use_vision)
+
+        # 优先尝试多模态 contexts（如果当前 AstrBot 版本/模型支持）
+        if cleaned_refs:
+            try:
+                message_mod = importlib.import_module("astrbot.core.agent.message")
+                user_msg_cls = getattr(message_mod, "UserMessageSegment", None)
+                text_part_cls = getattr(message_mod, "TextPart", None)
+                if user_msg_cls and text_part_cls:
+                    parts = [text_part_cls(text=prompt)]
+                    image_part_count = 0
+                    for ref in cleaned_refs[:4]:
+                        part = self._build_image_part(message_mod, ref)
+                        if part is not None:
+                            parts.append(part)
+                            image_part_count += 1
+                    if image_part_count > 0:
+                        user_msg = user_msg_cls(content=parts)
+                        resp = await self.context.llm_generate(chat_provider_id=provider_id, contexts=[user_msg])
+                        return resp.completion_text
+            except Exception as e:
+                logger.debug(f"[GaokaoTutor] multimodal contexts fallback to text prompt: {e}")
+
+        # 兜底：把图片引用拼进文本提示词
+        prompt_with_images = prompt
+        if cleaned_refs:
+            prompt_with_images += "\n\n【学生上传的草稿纸图片引用】\n"
+            prompt_with_images += "\n".join([f"- 图片{i+1}: {u}" for i, u in enumerate(cleaned_refs[:4])])
+            prompt_with_images += "\n请尽量结合图片内容判分；若你无法查看图片，请明确说明并仅基于可见文本给出评分。"
+
+        resp = await self.context.llm_generate(chat_provider_id=provider_id, prompt=prompt_with_images)
         return resp.completion_text
 
     # ─── 数据加载 ──────────────────────────────────────────────
@@ -447,21 +615,22 @@ class GaokaoTutor(Star):
             return True, correct_str
         return False, correct_str
 
-    async def _grade_subjective(self, event, item, user_ans, subject):
+    async def _grade_subjective(self, event, item, user_ans, subject, image_refs=None):
         max_score = item.get('score', 10)
         try:
             max_score = float(max_score)
         except (ValueError, TypeError):
             max_score = 10.0
-        prompt = f"""你是一名高中{subject}老师，正在批改高考{subject}试卷。请根据下面的【题目】、【分析过程】、【标准答案】、【分值】、【学生分析与答案】，对【学生分析与答案】进行判分并给出理由。输出格式为：【判分理由】...\\n【得分】...\\n【总分】...分
+        prompt = f"""你是一名高中{subject}老师，正在批改高考{subject}试卷。请严格按照高考阅卷评分标准（分步给分、关键点给分、结论与过程并重）进行判分。请根据下面的【题目】、【分析过程】、【标准答案】、【分值】、【学生分析与答案】，对【学生分析与答案】进行判分并给出理由。输出格式为：【判分理由】...\\n【得分】...\\n【总分】...分
 其中【总分】直接给出最终分数，不要超过【分值】。
+判分时请考虑：学生可能上传草稿纸照片，数学公式或推导不规范、符号潦草属常见情况；请优先识别其核心思路与关键步骤，不因排版/书写习惯过度扣分。若图片不可见或信息不足，请明确说明依据并给出保守评分。
 
 【题目】{item.get('question')}
 【分析过程】{item.get('analysis', '无')}
 【标准答案】{item.get('answer')}
 【分值】{max_score}
 【学生分析与答案】{user_ans}"""
-        llm_text = await self._llm_call(event, prompt)
+        llm_text = await self._llm_call(event, prompt, image_refs=image_refs)
         match = re.search(r"【总分】.*?(\d+(?:\.\d+)?)\s*分?", llm_text)
         earned = float(match.group(1)) if match else 0.0
         is_correct = earned >= (max_score * 0.6)
@@ -498,7 +667,8 @@ class GaokaoTutor(Star):
         r += "🧠 AI 名师\n"
         r += " /解析   AI深度解析上一题\n"
         r += " /知识点 [内容]  AI梳理知识点\n"
-        r += " /诊断   AI分析薄弱环节\n\n"
+        r += " /诊断   AI分析薄弱环节\n"
+        r += " （主观题支持发草稿纸照片给判官判分）\n\n"
         r += "📒 统计与提醒\n"
         r += " /错题 [页码]   错题本(翻页)\n"
         r += " /错题 复习     重做错题\n"
@@ -562,9 +732,9 @@ class GaokaoTutor(Star):
         tg_btn_sent = await self._try_send_tg_buttons(event, item)
         if not tg_btn_sent:
             if self.cfg_continuous_quiz:
-                yield event.plain_result("✏️ 直接发送答案，发「退出」结束刷题")
+                yield event.plain_result("✏️ 直接发送答案，发「退出」结束刷题。主观题也可直接发草稿纸照片")
             else:
-                yield event.plain_result("✏️ 请直接发送答案（客观题发选项如 A，主观题发解答文字），发 '跳过' 可跳过")
+                yield event.plain_result("✏️ 请直接发送答案（客观题发选项如 A，主观题可发解答文字/草稿纸照片），发 '跳过' 可跳过")
 
         # 交互式等待答案
         @session_waiter(timeout=self.cfg_quiz_timeout, record_history_chains=False)
@@ -656,7 +826,7 @@ class GaokaoTutor(Star):
         r += "=" * 25 + "\n" + item.get("question", "") + "\n" + "=" * 25
         return r
 
-    async def _process_answer(self, event, uid, item, subject, user_ans):
+    async def _process_answer(self, event, uid, item, subject, user_ans, image_refs=None):
         prog = await self._get_progress(uid)
         done_ids = prog.setdefault("done_ids", [])
         qidx = item.get("index")
@@ -668,15 +838,21 @@ class GaokaoTutor(Star):
 
         nickname = event.get_sender_name() if hasattr(event, 'get_sender_name') else ""
 
+        answer_text, inline_image_refs = self._extract_text_and_image_refs(user_ans)
+        merged_image_refs = self._clean_image_refs(
+            (image_refs or []) + inline_image_refs + self._extract_image_refs_from_event(event)
+        )
+
         if not item.get("_is_subjective"):
-            is_correct, correct_str = self._grade_objective(item, user_ans)
+            objective_input = answer_text if answer_text else user_ans
+            is_correct, correct_str = self._grade_objective(item, objective_input)
             await self._record(uid, subject, is_correct, item.get('category', '未知'), item.get('year', '未知'))
             await self._update_leaderboard(uid, nickname)
             if not is_correct:
                 await self._update_wrong_book(uid, item, False)
             res = f"{'✅ 回答正确！' if is_correct else '❌ 回答错误！'}"
             if self.cfg_render:
-                safe_ans = html_mod.escape(user_ans.strip().upper())
+                safe_ans = html_mod.escape(objective_input.strip().upper())
                 url = await self._render_html(item, True, f"【批改结果】{res}\n您的答案：{safe_ans}")
                 if url:
                     await event.send(event.image_result(url))
@@ -689,7 +865,19 @@ class GaokaoTutor(Star):
         else:
             await event.send(event.plain_result("⏳ AI名师正在批改主观解答..."))
             try:
-                is_correct, llm_text = await self._grade_subjective(event, item, user_ans, subject)
+                answer_for_grading = answer_text.strip()
+                if not answer_for_grading and merged_image_refs:
+                    answer_for_grading = "（学生上传草稿纸图片作答，未附文字说明）"
+                elif not answer_for_grading:
+                    answer_for_grading = user_ans
+
+                is_correct, llm_text = await self._grade_subjective(
+                    event,
+                    item,
+                    answer_for_grading,
+                    subject,
+                    image_refs=merged_image_refs,
+                )
                 await self._record(uid, subject, is_correct, item.get('category', '未知'), item.get('year', '未知'))
                 await self._update_leaderboard(uid, nickname)
                 await self._update_wrong_book(uid, item, is_correct)
@@ -704,6 +892,36 @@ class GaokaoTutor(Star):
                 logger.error(f"[GaokaoTutor] LLM grading error: {e}")
                 await event.send(event.plain_result(f"⚠️ AI批改失败，参考答案：\n{item.get('answer')}"))
                 return False
+
+    @staticmethod
+    def _looks_like_image_ref(text: str) -> bool:
+        if not text:
+            return False
+        s = str(text).strip()
+        if not s:
+            return False
+        if s.startswith("http://") or s.startswith("https://"):
+            return True
+        if s.startswith("data:image"):
+            return True
+        lower = s.lower()
+        return bool(re.search(r"\.(png|jpg|jpeg|webp|bmp|gif)(\?|#|$)", lower))
+
+    @classmethod
+    def _extract_text_and_image_refs(cls, text: str):
+        """从用户输入中拆分文本答案与图片引用（支持 `文本 + 图片链接` 混输）。"""
+        if text is None:
+            return "", []
+        lines = [ln.strip() for ln in str(text).splitlines()]
+        refs = []
+        kept = []
+        for ln in lines:
+            if cls._looks_like_image_ref(ln):
+                refs.append(ln)
+            else:
+                kept.append(ln)
+        plain = "\n".join([x for x in kept if x]).strip()
+        return plain, cls._clean_image_refs(refs)
 
     # ─── Telegram 按钮支持 ─────────────────────────────────────
 
@@ -857,7 +1075,7 @@ class GaokaoTutor(Star):
         else:
             yield event.plain_result(self._format_question_text(item, subject))
 
-        yield event.plain_result("✏️ 请直接发送答案，发 '跳过' 可跳过")
+        yield event.plain_result("✏️ 请直接发送答案，发 '跳过' 可跳过（主观题可发草稿纸照片）")
 
         @session_waiter(timeout=self.cfg_quiz_timeout, record_history_chains=False)
         async def wait(controller: SessionController, ev: AstrMessageEvent):
@@ -1082,7 +1300,7 @@ class GaokaoTutor(Star):
                     yield event.plain_result(self._format_question_text(item, subject))
             else:
                 yield event.plain_result(self._format_question_text(item, subject))
-            yield event.plain_result("✏️ 请直接发送答案")
+            yield event.plain_result("✏️ 请直接发送答案（主观题可发草稿纸照片）")
 
             @session_waiter(timeout=self.cfg_quiz_timeout, record_history_chains=False)
             async def review_wait(controller: SessionController, ev: AstrMessageEvent):
@@ -1151,7 +1369,7 @@ class GaokaoTutor(Star):
                 yield event.plain_result(self._format_question_text(item, subject))
         else:
             yield event.plain_result(self._format_question_text(item, subject))
-        yield event.plain_result("✏️ 请直接发送答案")
+        yield event.plain_result("✏️ 请直接发送答案（主观题可发草稿纸照片）")
 
         @session_waiter(timeout=self.cfg_quiz_timeout, record_history_chains=False)
         async def review_wait(controller: SessionController, ev: AstrMessageEvent):
@@ -1332,7 +1550,21 @@ class GaokaoTutor(Star):
                     await ev.send(ev.plain_result(f"{'✅ 回答正确！' if is_correct else '❌ 回答错误！'} (得分: {earned})"))
                 else:
                     await ev.send(ev.plain_result("⏳ 收到主观题作答，继续下一题... (将在交卷后统一展示评分)"))
-                    is_correct, llm_text = await getattr(self, "_grade_subjective")(ev, item, ans, subject)
+                    ans_text, inline_refs = self._extract_text_and_image_refs(ans)
+                    exam_img_refs = self._clean_image_refs(inline_refs + self._extract_image_refs_from_event(ev))
+                    answer_for_grading = ans_text.strip()
+                    if not answer_for_grading and exam_img_refs:
+                        answer_for_grading = "（学生上传草稿纸图片作答，未附文字说明）"
+                    elif not answer_for_grading:
+                        answer_for_grading = ans
+
+                    is_correct, llm_text = await getattr(self, "_grade_subjective")(
+                        ev,
+                        item,
+                        answer_for_grading,
+                        subject,
+                        image_refs=exam_img_refs,
+                    )
                     await self._record(uid, subject, is_correct, item.get('category', '未知'), item.get('year', '未知'))
                     await self._update_wrong_book(uid, item, is_correct)
                     match = re.search(r"【总分】.*?(\d+(?:\.\d+)?)\s*分?", llm_text)
@@ -1630,4 +1862,3 @@ class GaokaoTutor(Star):
         # 自动触发刷题
         async for result in self.quiz(event):
             yield result
-

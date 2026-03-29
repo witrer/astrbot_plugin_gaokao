@@ -1,8 +1,14 @@
 {
+  "vision_llm_provider": {
+    "description": "🖼️ 图片判分模型",
+    "type": "string",
+    "hint": "用于检测到草稿纸照片/图片时的多模态判分",
+    "_special": "select_provider"
+  },
   "llm_provider": {
     "description": "🤖 AI 批改/解析使用的模型",
     "type": "string",
-    "hint": "选择用于主观题批改、AI解析、诊断等功能的大模型提供商与模型",
+    "hint": "用于主观题文字判分、AI解析、诊断等文本场景；若检测到图片且已配置图片判分模型，则自动走图片模型",
     "_special": "select_provider"
   },
   "render_as_image": {
