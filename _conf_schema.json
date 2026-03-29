@@ -23,16 +23,52 @@
     "default": 300,
     "hint": "使用交互模式时，等待用户回答的超时时间"
   },
+  "continuous_quiz_mode": {
+    "description": "🔄 连续刷题模式",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后刷题答完一题自动出下一题，无需再次发送指令；关闭则每次只出一题"
+  },
   "rush_mode_count": {
     "description": "🎮 闯关模式最大题数",
     "type": "int",
     "default": 20,
     "hint": "闯关模式最多连续出多少题"
   },
+  "mix_challenge_count": {
+    "description": "🌈 混合挑战最大题数",
+    "type": "int",
+    "default": 20,
+    "hint": "混合挑战模式最多连续出多少题"
+  },
+  "leaderboard_page_size": {
+    "description": "🏆 排行榜显示人数",
+    "type": "int",
+    "default": 10,
+    "hint": "排行榜每页显示多少人"
+  },
   "wrong_book_page_size": {
     "description": "📒 错题本每页显示数",
     "type": "int",
     "default": 5,
     "hint": "错题本翻页时每页显示多少道题"
+  },
+  "daily_push_time": {
+    "description": "📬 每日推送时间",
+    "type": "string",
+    "default": "08:00",
+    "hint": "格式 HH:MM，每天在此时间向订阅者推送打卡提醒"
+  },
+  "exam_select_count": {
+    "description": "📝 模考选择题数",
+    "type": "int",
+    "default": 5,
+    "hint": "模拟考试时抽取的选择题数量"
+  },
+  "exam_subjective_count": {
+    "description": "📝 模考大题数",
+    "type": "int",
+    "default": 1,
+    "hint": "模拟考试时抽取的主观题数量"
   }
 }
