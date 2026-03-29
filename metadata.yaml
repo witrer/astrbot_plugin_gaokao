@@ -3,6 +3,5 @@ display_name: "高考金牌私教"
 desc: "基于GAOKAO-Bench真题的高考智能助手，支持全科刷题、连续答题、排行榜、混合挑战、闯关PK、AI解析、错题复习、专项练习、AI诊断。"
 author: "witrer"
 repo: "https://github.com/witrer/astrbot_plugin_gaokao"
-version: "2.1.0"
+version: "2.1.1"
 astrbot_version: ">=4.9.2"
-

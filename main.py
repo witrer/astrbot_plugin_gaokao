@@ -59,7 +59,7 @@ SUBJECT_FILE_MAP = {
 }
 
 
-@register("astrbot_plugin_gaokao", "202704948-design", "高考金牌私教", "2.0.0")
+@register("astrbot_plugin_gaokao", "202704948-design", "高考金牌私教", "2.1.1")
 class GaokaoTutor(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
