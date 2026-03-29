@@ -221,3 +221,20 @@ config.json
 # 忽略 Python 缓存
 __pycache__/
 *.pyc
+
+# 测试文件和构建脚本
+test_*.py
+verify_sources.py
+download_*.py
+build_*.py
+
+# ZIP 构建产物
+*.zip
+
+# 调试和临时文件
+zip*.txt
+implementation_plan.md
+test_zip_contents/
+
+# 开发文档（不需要提交到插件仓库）
+astrbot-plugin-dev-docs.md

@@ -1,1 +1,0 @@
-['astrbot_plugin_gaokao/', 'astrbot_plugin_gaokao/Data/', 'astrbot_plugin_gaokao/LICENSE', 'astrbot_plugin_gaokao/main.py', 'astrbot_plugin_gaokao/metadata.yaml']

@@ -225,7 +225,7 @@ class GaokaoTutor(Star):
         ans_text = self._latex_to_html(ans_text).replace('\n', '<br>')
         analysis = self._latex_to_html(item.get("analysis", "")).replace('\n', '<br>')
 
-        body = f"<div style='font-size:18px;line-height:1.9;'>{q_text}</div>"
+        body = f"<div style='font-size:18px;line-height:1.9;letter-spacing:0.3px;'>{q_text}</div>"
         if include_answer:
             body += f"<div style='margin-top:20px;padding:15px;background:#e8f4f8;border-radius:8px;'><b>正确答案：</b><br>{ans_text}</div>"
             if analysis:
@@ -239,19 +239,20 @@ class GaokaoTutor(Star):
         score = item.get('score', '?')
 
         tmpl = """
-        <div style="font-family:'Segoe UI',Tahoma,sans-serif;padding:20px;line-height:1.8;background:#f8f9fa;color:#333;max-width:420px;">
+        <div style="font-family:'Microsoft YaHei','PingFang SC','Segoe UI',Tahoma,sans-serif;padding:20px;line-height:1.8;background:#f8f9fa;color:#333;width:100%;box-sizing:border-box;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;">
           <div style="background:#fff;padding:24px;border-radius:12px;box-shadow:0 8px 16px rgba(0,0,0,.05);">
             <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:6px;">
-              <span style="padding:4px 10px;background:#e2e8f0;border-radius:6px;font-size:13px;color:#475569;font-weight:500;">{{ q_type }}</span>
-              <span style="padding:4px 10px;background:#e2e8f0;border-radius:6px;font-size:13px;color:#475569;font-weight:500;">{{ year }}</span>
-              <span style="padding:4px 10px;background:#e2e8f0;border-radius:6px;font-size:13px;color:#475569;font-weight:500;">{{ cat }}</span>
-              <span style="padding:4px 10px;background:#e2e8f0;border-radius:6px;font-size:13px;color:#475569;font-weight:500;">{{ score }}分</span>
+              <span style="padding:4px 10px;background:#e2e8f0;border-radius:6px;font-size:14px;color:#475569;font-weight:600;">{{ q_type }}</span>
+              <span style="padding:4px 10px;background:#e2e8f0;border-radius:6px;font-size:14px;color:#475569;font-weight:600;">{{ year }}</span>
+              <span style="padding:4px 10px;background:#e2e8f0;border-radius:6px;font-size:14px;color:#475569;font-weight:600;">{{ cat }}</span>
+              <span style="padding:4px 10px;background:#e2e8f0;border-radius:6px;font-size:14px;color:#475569;font-weight:600;">{{ score }}分</span>
             </div>
             {{ body }}
           </div>
         </div>"""
+        render_options = {"viewport": {"width": 480, "height": 800}, "scale": 2}
         try:
-            url = await self.html_render(tmpl, {"q_type": q_type, "year": year, "cat": cat, "score": score, "body": body})
+            url = await self.html_render(tmpl, {"q_type": q_type, "year": year, "cat": cat, "score": score, "body": body}, options=render_options)
             return url
         except Exception as e:
             logger.error(f"[GaokaoTutor] Render Error: {e}")
@@ -891,19 +892,20 @@ class GaokaoTutor(Star):
               <div style="font-size:12px;color:#94a3b8;">做题 {t} · 正确 {c} · 错误 {t-c}</div>
             </div>"""
         tmpl = """
-        <div style="font-family:'Segoe UI',sans-serif;padding:20px;background:#f1f5f9;color:#1e293b;max-width:380px;">
+        <div style="font-family:'Microsoft YaHei','PingFang SC','Segoe UI',sans-serif;padding:20px;background:#f1f5f9;color:#1e293b;width:100%;box-sizing:border-box;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;">
           <div style="text-align:center;margin-bottom:20px;">
             <div style="font-size:22px;font-weight:700;margin-bottom:4px;">📊 学习报告</div>
-            <div style="font-size:13px;color:#64748b;">累计 {{ total }} 题 · 正确率 {{ overall_acc }}%</div>
+            <div style="font-size:14px;color:#64748b;">累计 {{ total }} 题 · 正确率 {{ overall_acc }}%</div>
           </div>
           <div style="background:linear-gradient(135deg,#6366f1,#818cf8);padding:20px;border-radius:14px;color:#fff;text-align:center;margin-bottom:16px;">
             <div style="font-size:40px;font-weight:800;line-height:1;">{{ overall_acc }}%</div>
-            <div style="font-size:13px;margin-top:6px;opacity:.9;">综合正确率</div>
+            <div style="font-size:14px;margin-top:6px;opacity:.9;">综合正确率</div>
           </div>
           {{ cards }}
         </div>"""
+        report_options = {"viewport": {"width": 420, "height": 800}, "scale": 2}
         try:
-            url = await self.html_render(tmpl, {"total": ot, "overall_acc": f"{oa:.1f}", "cards": cards})
+            url = await self.html_render(tmpl, {"total": ot, "overall_acc": f"{oa:.1f}", "cards": cards}, options=report_options)
             yield event.image_result(url)
         except Exception:
             # 文字降级方案
