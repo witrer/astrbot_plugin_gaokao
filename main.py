@@ -638,7 +638,7 @@ class GaokaoTutor(Star):
 
     # ─── 指令：帮助 ────────────────────────────────────────────
 
-    @filter.command("高考帮助", alias={"帮助", "help", "gkhelp"})
+    @filter.command("高考帮助", alias={"帮助", "gkhelp"})
     async def show_help(self, event: AstrMessageEvent):
         today = datetime.now()
         try:
